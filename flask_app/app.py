@@ -221,8 +221,8 @@ def index():
     return render_template("index.html")
 
 if __name__ == "__main__":
-    # For local development
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
 else:
     # For Vercel deployment, create the app instance
     application = app
