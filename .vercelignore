@@ -1,0 +1,40 @@
+# Virtual environments
+rolex-env/
+venv/
+env/
+
+# Data and audio files
+data/
+audio_samples/
+features/
+
+# Scripts (not needed for runtime)
+scripts/
+
+# Large files
+get-pip.py
+
+# Flask app uploads and cache
+flask_app/uploads/
+flask_app/__pycache__/
+api/__pycache__/
+
+# Development files
+*.log
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Documentation
+README.md
+flask_app/README.md
+
+# Testing files
+flask_app/test_model.py
