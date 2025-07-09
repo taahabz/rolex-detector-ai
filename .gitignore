@@ -1,0 +1,84 @@
+# Python virtual environment
+rolex-env/
+venv/
+env/
+.env
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Heavy ML/Audio files
+data/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.webm
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Large dependencies
+get-pip.py
+
+# Features dataset (can be large)
+features/dataset.csv
+
+# Log files
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Node modules (if any)
+node_modules/
+
+# Vercel
+.vercel

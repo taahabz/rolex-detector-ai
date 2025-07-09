@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Rolex Authenticity Detector</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
+    <script src="{{ url_for('static', filename='script_new.js') }}?v=5" defer></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌚</text></svg>">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <div class="header">
+            <h1 class="logo"> ROLEX DETECTOR</h1>
+            <p class="subtitle">AI-Powered Audio Authentication</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">
+                                <span class="flash-icon">{% if category == 'error' %}❌{% else %}ℹ️{% endif %}</span>
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <!-- Upload Section -->
+            <form method="POST" enctype="multipart/form-data" id="upload-form">
+                <div class="upload-section">
+                    <!-- Recording Section -->
+                    <div class="input-method recording-method">
+                        <div class="method-header">
+                            <span class="method-icon">🎙️</span>
+                            <span class="method-title">Record Audio</span>
+                        </div>
+                        
+                        <div class="recording-controls">
+                            <button type="button" class="record-btn" id="record-btn">
+                                <span class="btn-icon">🔴</span>
+                                <span class="btn-text">Record</span>
+                            </button>
+                            <button type="button" class="stop-btn" id="stop-btn" disabled>
+                                <span class="btn-icon">⏹️</span>
+                                <span class="btn-text">Stop</span>
+                            </button>
+                        </div>
+                        
+                        <div class="countdown" id="countdown">
+                            <div class="countdown-number" id="countdown-number">3</div>
+                        </div>
+                        
+                        <div class="recording-status" id="recording-status">
+                            <div class="recording-pulse"></div>
+                            <span class="recording-text">Recording...</span>
+                            <span class="recording-timer" id="recording-timer">5</span>
+                        </div>
+                        
+                        <div class="recorded-audio" id="recorded-audio">
+                            <audio controls id="audio-playback"></audio>
+                            <div class="recorded-actions">
+                                <button type="button" class="use-btn" id="use-recording-btn">Use</button>
+                                <button type="button" class="retry-btn" id="re-record-btn">Retry</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="divider">
+                        <span class="divider-text">OR</span>
+                    </div>
+                    
+                    <!-- File Upload Section -->
+                    <div class="input-method upload-method">
+                        <div class="method-header">
+                            <span class="method-icon">📁</span>
+                            <span class="method-title">Upload File</span>
+                        </div>
+                        
+                        <div class="file-input-wrapper">
+                            <input type="file" name="file" id="file-input" class="file-input" accept="audio/*">
+                            <label for="file-input" class="file-input-label" id="file-label">
+                                <div class="upload-icon">📎</div>
+                                <div class="upload-text">Choose file</div>
+                            </label>
+                        </div>
+                        
+                        <div class="file-info" id="file-info">
+                            <span class="file-name" id="file-name"></span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="analyze-btn" id="submit-btn" disabled>
+                        <span class="btn-icon">🔍</span>
+                        <span class="btn-text">Analyze</span>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Loading -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <div class="loading-text">Analyzing...</div>
+            </div>
+
+            <!-- Results -->
+            {% if result %}
+                <div class="result-section {% if result == 'Real' %}result-real{% else %}result-fake{% endif %}">
+                    <div class="result-header">
+                        <span class="result-icon">{% if result == 'Real' %}✅{% else %}❌{% endif %}</span>
+                        <span class="result-title">{% if result == 'Real' %}AUTHENTIC{% else %}FAKE{% endif %}</span>
+                    </div>
+                    
+                    {% if confidence %}
+                        <div class="confidence-section">
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width: {{ confidence }}%;"></div>
+                            </div>
+                            <div class="confidence-text">{{ "%.0f"|format(confidence) }}% confidence</div>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+        </div>
+    </div>
+</body>
+</html>
