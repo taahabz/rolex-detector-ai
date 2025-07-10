@@ -25,7 +25,7 @@ PROJECT_ROOT = os.path.dirname(BASE_DIR)
 UPLOAD_FOLDER = tempfile.mkdtemp()
 
 # Model path - prioritize Heroku-friendly paths
-MODEL_PATH = os.path.join(PROJECT_ROOT, "model", "rolex_model.pkl")
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model", "rolex_model.pkl")
 ALLOWED_EXTENSIONS = {'wav', 'mp3', 'm4a', 'flac', 'ogg', 'webm'}
 
 # Ensure upload folder exists
