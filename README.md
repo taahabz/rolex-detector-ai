@@ -14,7 +14,7 @@ An AI-powered web application that analyzes audio files to detect authentic Role
 
 - **Backend**: Flask (Python)
 - **Machine Learning**: scikit-learn, librosa
-- **Audio Processing**: pydub, librosa
+- **Audio Processing**: pydub, librosa, soundfile
 - **Frontend**: HTML, CSS, JavaScript
 - **Deployment**: Heroku
 
@@ -25,9 +25,47 @@ An AI-powered web application that analyzes audio files to detect authentic Role
 3. Run the application: `python app.py`
 4. Open your browser to `http://localhost:5000`
 
-## Deployment
+## Heroku Deployment
 
-This application is configured for Heroku deployment. See deployment instructions below.
+This application is configured for Heroku deployment with audio processing capabilities.
+
+### Important for Audio Processing:
+
+The app uses `heroku.yml` to install system dependencies required for audio processing:
+- `ffmpeg` - For audio format conversion
+- `libsndfile1` - For audio file reading
+- `libsndfile1-dev` - Development headers for soundfile
+
+### Deployment Steps:
+
+1. **Enable heroku.yml builds** in your Heroku app:
+   ```bash
+   heroku stack:set container -a your-app-name
+   ```
+
+2. **Or use heroku.yml** by setting the stack:
+   ```bash
+   heroku stack:set heroku-22 -a your-app-name
+   ```
+
+3. **Set environment variables**:
+   ```bash
+   heroku config:set SECRET_KEY="your-secure-secret-key"
+   heroku config:set FLASK_ENV=production
+   ```
+
+4. **Deploy**:
+   ```bash
+   git push heroku main
+   ```
+
+### Troubleshooting Audio Issues:
+
+If you encounter "Error processing audio file" errors:
+
+1. **Check logs**: `heroku logs --tail`
+2. **Test audio setup**: Use the `/health` endpoint to verify setup
+3. **Run audio test**: `heroku run python test_audio.py`
 
 ## Model Information
 
@@ -37,3 +75,10 @@ The application uses a Random Forest classifier trained on audio features includ
 - Spectral centroid
 
 The model analyzes these features to classify audio as either authentic or fake Rolex sounds.
+
+## System Dependencies
+
+- Python 3.11+
+- ffmpeg (for audio conversion)
+- libsndfile1 (for audio file reading)
+- Various Python packages (see requirements.txt)

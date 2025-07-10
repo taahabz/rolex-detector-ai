@@ -7,6 +7,12 @@ import numpy as np
 import librosa
 import tempfile
 import shutil
+import logging
+import sys
+
+# Set up logging for better debugging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-this')
@@ -30,26 +36,29 @@ try:
     # Primary path for Heroku
     if os.path.exists(MODEL_PATH):
         model = joblib.load(MODEL_PATH)
-        print("✓ Model loaded successfully from primary path")
+        logger.info("✓ Model loaded successfully from primary path")
     else:
         # Alternative relative path
         alt_model_path = os.path.join(BASE_DIR, "..", "model", "rolex_model.pkl")
         if os.path.exists(alt_model_path):
             model = joblib.load(alt_model_path)
-            print("✓ Model loaded successfully from alternative path")
+            logger.info("✓ Model loaded successfully from alternative path")
         else:
             # Try current directory
             current_model_path = os.path.join("model", "rolex_model.pkl")
             if os.path.exists(current_model_path):
                 model = joblib.load(current_model_path)
-                print("✓ Model loaded successfully from current directory")
+                logger.info("✓ Model loaded successfully from current directory")
             else:
                 raise FileNotFoundError("Model file not found in any expected location")
 except Exception as e:
-    print(f"✗ Error loading model: {e}")
-    print(f"Current working directory: {os.getcwd()}")
-    print(f"Files in current directory: {os.listdir('.')}")
-    print(f"Files in model directory: {os.listdir('model') if os.path.exists('model') else 'Model directory not found'}")
+    logger.error(f"✗ Error loading model: {e}")
+    logger.error(f"Current working directory: {os.getcwd()}")
+    logger.error(f"Files in current directory: {os.listdir('.')}")
+    if os.path.exists('model'):
+        logger.error(f"Files in model directory: {os.listdir('model')}")
+    else:
+        logger.error("Model directory not found")
     model = None
 
 def allowed_file(filename):
@@ -58,12 +67,16 @@ def allowed_file(filename):
 def convert_to_wav(input_path):
     """Convert audio file to WAV format if needed"""
     try:
-        print(f"Converting audio file: {input_path}")
+        logger.info(f"Converting audio file: {input_path}")
         
         # Check if file exists
         if not os.path.exists(input_path):
-            print(f"Input file does not exist: {input_path}")
+            logger.error(f"Input file does not exist: {input_path}")
             return input_path
+        
+        # Check file size
+        file_size = os.path.getsize(input_path)
+        logger.info(f"File size: {file_size} bytes")
         
         # Load audio file with pydub
         if input_path.endswith('.webm'):
@@ -78,48 +91,71 @@ def convert_to_wav(input_path):
         # Export as WAV with specific parameters for consistency
         audio.export(output_path, format="wav", parameters=["-ar", "44100", "-ac", "1"])
         
-        print(f"Successfully converted to: {output_path}")
+        logger.info(f"Successfully converted to: {output_path}")
         
         # Verify the output file was created
         if not os.path.exists(output_path):
-            print(f"Conversion failed - output file not created: {output_path}")
+            logger.error(f"Conversion failed - output file not created: {output_path}")
             return input_path
             
         return output_path
     except Exception as e:
-        print(f"Error converting audio from {input_path}: {e}")
+        logger.error(f"Error converting audio from {input_path}: {e}")
+        logger.error(f"Exception type: {type(e)}")
         import traceback
-        traceback.print_exc()
+        logger.error(traceback.format_exc())
         return input_path
 
 def extract_features(filepath):
     """Extract features matching the training format exactly"""
     try:
-        print(f"Processing file: {filepath}")
+        logger.info(f"Processing file: {filepath}")
+        
+        # Check if file exists and is readable
+        if not os.path.exists(filepath):
+            logger.error(f"File does not exist: {filepath}")
+            return None
+            
+        file_size = os.path.getsize(filepath)
+        logger.info(f"File size: {file_size} bytes")
+        
+        if file_size == 0:
+            logger.error("File is empty")
+            return None
         
         # Always convert WebM and other non-WAV files to WAV
         if not filepath.endswith('.wav'):
-            print(f"Converting {filepath} to WAV...")
+            logger.info(f"Converting {filepath} to WAV...")
             converted_path = convert_to_wav(filepath)
             if not os.path.exists(converted_path):
-                print(f"Conversion failed - file does not exist: {converted_path}")
+                logger.error(f"Conversion failed - file does not exist: {converted_path}")
                 return None
             filepath = converted_path
         
         # Load audio with same parameters as training (16kHz sampling rate)
-        print(f"Loading audio with librosa: {filepath}")
-        y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
+        logger.info(f"Loading audio with librosa: {filepath}")
+        
+        try:
+            y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
+        except Exception as e:
+            logger.error(f"Error loading audio with librosa: {e}")
+            logger.error(f"Librosa version: {librosa.__version__}")
+            return None
         
         if len(y) == 0:
-            print("Audio file is empty or corrupted")
+            logger.error("Audio file is empty or corrupted")
             return None
             
-        print(f"Audio loaded: {len(y)} samples at {sr} Hz")
+        logger.info(f"Audio loaded: {len(y)} samples at {sr} Hz")
         
         # Extract features exactly like training script
-        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-        zcr = librosa.feature.zero_crossing_rate(y)
-        spec_cent = librosa.feature.spectral_centroid(y=y, sr=sr)
+        try:
+            mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+            zcr = librosa.feature.zero_crossing_rate(y)
+            spec_cent = librosa.feature.spectral_centroid(y=y, sr=sr)
+        except Exception as e:
+            logger.error(f"Error extracting audio features: {e}")
+            return None
 
         # Combine features in same order as training
         features = np.hstack([
@@ -131,21 +167,22 @@ def extract_features(filepath):
             np.std(spec_cent)          # spec_cent_std (1 feature)
         ])
         
-        print(f"Extracted features shape: {features.shape} (expected: 30)")
+        logger.info(f"Extracted features shape: {features.shape} (expected: 30)")
         
         # Clean up converted file if it was created
         if filepath.endswith('_converted.wav'):
             try:
                 os.remove(filepath)
-                print(f"Cleaned up converted file: {filepath}")
+                logger.info(f"Cleaned up converted file: {filepath}")
             except:
                 pass
             
         return features
     except Exception as e:
-        print(f"Error extracting features from {filepath}: {e}")
+        logger.error(f"Error extracting features from {filepath}: {e}")
+        logger.error(f"Exception type: {type(e)}")
         import traceback
-        traceback.print_exc()
+        logger.error(traceback.format_exc())
         
         # Clean up converted file if it exists
         if filepath.endswith('_converted.wav'):
@@ -162,6 +199,7 @@ def index():
         # Check if model is loaded
         if model is None:
             flash("Model not available. Please try again later.", "error")
+            logger.error("Model not available")
             return render_template("index.html")
         
         # Check if file was uploaded
@@ -187,11 +225,14 @@ def index():
             filepath = os.path.join(UPLOAD_FOLDER, filename)
             file.save(filepath)
             
+            logger.info(f"File uploaded: {filename}, size: {os.path.getsize(filepath)} bytes")
+            
             # Extract features
             features = extract_features(filepath)
             
             if features is None:
                 flash("Error processing audio file. Please try a different file.", "error")
+                logger.error("Feature extraction failed")
                 # Clean up uploaded file
                 if os.path.exists(filepath):
                     os.remove(filepath)
@@ -208,6 +249,8 @@ def index():
             result = "Fake" if prediction == 0 else "Real"
             confidence_score = max(confidence) * 100
             
+            logger.info(f"Prediction: {result}, Confidence: {confidence_score}%")
+            
             # Clean up uploaded file
             if os.path.exists(filepath):
                 os.remove(filepath)
@@ -218,7 +261,10 @@ def index():
                                  filename=file.filename)
                                  
         except Exception as e:
-            print(f"Error processing file: {e}")
+            logger.error(f"Error processing file: {e}")
+            logger.error(f"Exception type: {type(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             flash("Error processing audio file. Please try again.", "error")
             # Clean up uploaded file
             if 'filepath' in locals() and os.path.exists(filepath):
@@ -230,7 +276,12 @@ def index():
 # Health check endpoint for Heroku
 @app.route("/health")
 def health_check():
-    return jsonify({"status": "healthy", "model_loaded": model is not None})
+    return jsonify({
+        "status": "healthy", 
+        "model_loaded": model is not None,
+        "python_version": sys.version,
+        "librosa_version": librosa.__version__
+    })
 
 if __name__ == "__main__":
     # For local development

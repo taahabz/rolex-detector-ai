@@ -11,6 +11,7 @@ audio_samples/
 data/
 features/
 get-pip.py
+test_audio.py
 *.pyc
 __pycache__/
 .DS_Store
