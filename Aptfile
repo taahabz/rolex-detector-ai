@@ -1,3 +1,3 @@
-echo "ffmpeg" > Aptfile
-echo "libsndfile1" >> Aptfile
-echo "libsndfile1-dev" >> Aptfile
+ffmpeg
+libsndfile1
+libsndfile1-dev
