@@ -1,0 +1,22 @@
+# Exclude unnecessary files and directories from Heroku deployment
+rolex-env/
+.git/
+.gitignore
+.vercelignore
+vercel.json
+requirements-vercel.txt
+api/
+scripts/
+audio_samples/
+data/
+features/
+get-pip.py
+*.pyc
+__pycache__/
+.DS_Store
+.env
+*.log
+*.tmp
+*.swp
+*.swo
+*~ 
