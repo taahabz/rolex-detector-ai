@@ -98,21 +98,39 @@ def extract_features(filepath):
             logger.error("File is empty")
             return None
 
-        # SIMPLE APPROACH: Try to load any audio file directly with librosa
-        # librosa can handle most formats including WebM through soundfile
+        # SIMPLE SOLUTION: Convert WebM to WAV using pydub first, then use librosa
+        # This handles the WebM codec issue on Heroku
+        temp_wav_path = None
         try:
-            logger.info("Trying to load audio file directly with librosa...")
-            y, sr = librosa.load(filepath, sr=16000)
-            logger.info(f"SUCCESS: Audio loaded directly - {len(y)} samples at {sr}Hz")
+            # Check if file is WebM format
+            if filepath.lower().endswith('.webm'):
+                logger.info("WebM file detected, converting to WAV using pydub...")
+                
+                # Use pydub to convert WebM to WAV
+                audio = AudioSegment.from_file(filepath, format="webm")
+                
+                # Create temporary WAV file
+                temp_wav_path = filepath.replace('.webm', '_temp.wav')
+                audio.export(temp_wav_path, format="wav")
+                
+                logger.info(f"WebM converted to WAV: {temp_wav_path}")
+                
+                # Use the converted WAV file for librosa
+                y, sr = librosa.load(temp_wav_path, sr=16000)
+                logger.info(f"SUCCESS: Audio loaded from converted WAV - {len(y)} samples at {sr}Hz")
+            else:
+                # For non-WebM files, try direct loading with librosa
+                logger.info("Non-WebM file, trying direct librosa loading...")
+                y, sr = librosa.load(filepath, sr=16000)
+                logger.info(f"SUCCESS: Audio loaded directly - {len(y)} samples at {sr}Hz")
+                
         except Exception as e:
-            logger.error(f"Direct loading failed: {str(e)}")
+            logger.error(f"Primary loading method failed: {str(e)}")
             logger.error(f"Exception type: {type(e).__name__}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
             
-            # Simple fallback: try loading without resampling first
+            # Fallback: try loading without resampling first
             try:
-                logger.info("Trying to load without resampling...")
+                logger.info("Trying fallback: loading without resampling...")
                 y, sr = librosa.load(filepath, sr=None)
                 logger.info(f"Loaded at original rate: {len(y)} samples at {sr}Hz")
                 
@@ -125,8 +143,15 @@ def extract_features(filepath):
             except Exception as e2:
                 logger.error(f"All loading methods failed: {str(e2)}")
                 logger.error(f"Exception type: {type(e2).__name__}")
-                logger.error(f"Full traceback: {traceback.format_exc()}")
                 return None
+        finally:
+            # Clean up temporary WAV file if created
+            if temp_wav_path and os.path.exists(temp_wav_path):
+                try:
+                    os.remove(temp_wav_path)
+                    logger.info(f"Cleaned up temporary file: {temp_wav_path}")
+                except:
+                    pass
         
         if len(y) == 0:
             logger.error("Audio file is empty or corrupted")
