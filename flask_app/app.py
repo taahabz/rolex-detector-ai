@@ -180,51 +180,57 @@ def extract_features(filepath):
             logger.error("File is empty")
             return None
         
-        # Always convert WebM and other non-WAV files to WAV
-        if not filepath.endswith('.wav'):
-            logger.info(f"Converting {filepath} to WAV...")
-            converted_path = convert_to_wav(filepath)
-            
-            # Check if conversion actually worked
-            if not os.path.exists(converted_path):
-                logger.error(f"Conversion failed - file does not exist: {converted_path}")
-                return None
-            
-            # Check if conversion returned the original path (indicating failure)
-            if converted_path == filepath:
-                logger.error("Conversion returned original path - conversion likely failed")
-                return None
-                
-            # Verify the converted file is actually a WAV file
-            if not converted_path.endswith('.wav'):
-                logger.error(f"Conversion did not produce a WAV file: {converted_path}")
-                return None
-                
-            filepath = converted_path
-            logger.info(f"Successfully converted to WAV: {filepath}")
-        
-        # Load audio with same parameters as training (16kHz sampling rate)
+        # Try loading directly with librosa first (supports many formats including WebM)
         logger.info(f"Loading audio with librosa: {filepath}")
         
         try:
-            # Skip soundfile validation - go straight to librosa
+            # First attempt: Load directly with librosa (works with most formats)
             y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
-            logger.info(f"Librosa loaded {len(y)} samples at {sr}Hz")
+            logger.info(f"Librosa loaded {len(y)} samples at {sr}Hz directly")
         except Exception as e:
-            logger.error(f"Error loading audio with librosa: {e}")
-            logger.error(f"Librosa version: {librosa.__version__}")
-            # Try alternative loading methods
+            logger.info(f"Direct librosa loading failed: {e}, trying conversion method")
+            
+            # Fallback: Convert to WAV first (only if direct loading fails)
+            if not filepath.endswith('.wav'):
+                logger.info(f"Converting {filepath} to WAV...")
+                converted_path = convert_to_wav(filepath)
+                
+                # Check if conversion actually worked
+                if not os.path.exists(converted_path):
+                    logger.error(f"Conversion failed - file does not exist: {converted_path}")
+                    return None
+                
+                # Check if conversion returned the original path (indicating failure)
+                if converted_path == filepath:
+                    logger.error("Conversion returned original path - conversion likely failed")
+                    return None
+                    
+                # Verify the converted file is actually a WAV file
+                if not converted_path.endswith('.wav'):
+                    logger.error(f"Conversion did not produce a WAV file: {converted_path}")
+                    return None
+                    
+                filepath = converted_path
+                logger.info(f"Successfully converted to WAV: {filepath}")
+            
+            # Try loading the converted file
             try:
-                logger.info("Trying alternative loading method...")
-                y, sr = librosa.load(filepath, sr=None)  # Load with original sample rate first
-                if sr != 16000:
-                    logger.info(f"Resampling from {sr}Hz to 16000Hz")
-                    y = librosa.resample(y, orig_sr=sr, target_sr=16000)
-                    sr = 16000
-                logger.info(f"Alternative method loaded {len(y)} samples at {sr}Hz")
+                y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
+                logger.info(f"Librosa loaded {len(y)} samples at {sr}Hz after conversion")
             except Exception as e2:
-                logger.error(f"Alternative loading method also failed: {e2}")
-                return None
+                logger.error(f"Error loading converted audio with librosa: {e2}")
+                # Try alternative loading methods
+                try:
+                    logger.info("Trying alternative loading method...")
+                    y, sr = librosa.load(filepath, sr=None)  # Load with original sample rate first
+                    if sr != 16000:
+                        logger.info(f"Resampling from {sr}Hz to 16000Hz")
+                        y = librosa.resample(y, orig_sr=sr, target_sr=16000)
+                        sr = 16000
+                    logger.info(f"Alternative method loaded {len(y)} samples at {sr}Hz")
+                except Exception as e3:
+                    logger.error(f"Alternative loading method also failed: {e3}")
+                    return None
         
         if len(y) == 0:
             logger.error("Audio file is empty or corrupted")
