@@ -169,25 +169,30 @@ def extract_features(filepath):
         if not filepath.endswith('.wav'):
             logger.info(f"Converting {filepath} to WAV...")
             converted_path = convert_to_wav(filepath)
+            
+            # Check if conversion actually worked
             if not os.path.exists(converted_path):
                 logger.error(f"Conversion failed - file does not exist: {converted_path}")
                 return None
+            
+            # Check if conversion returned the original path (indicating failure)
+            if converted_path == filepath:
+                logger.error("Conversion returned original path - conversion likely failed")
+                return None
+                
+            # Verify the converted file is actually a WAV file
+            if not converted_path.endswith('.wav'):
+                logger.error(f"Conversion did not produce a WAV file: {converted_path}")
+                return None
+                
             filepath = converted_path
+            logger.info(f"Successfully converted to WAV: {filepath}")
         
         # Load audio with same parameters as training (16kHz sampling rate)
         logger.info(f"Loading audio with librosa: {filepath}")
         
         try:
-            # Test if librosa can access the file
-            import soundfile as sf
-            try:
-                # Try to read file info first
-                info = sf.info(filepath)
-                logger.info(f"Audio file info: {info.frames} frames, {info.samplerate}Hz, {info.channels} channels")
-            except Exception as e:
-                logger.error(f"soundfile cannot read file info: {e}")
-                return None
-            
+            # Skip soundfile validation - go straight to librosa
             y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
             logger.info(f"Librosa loaded {len(y)} samples at {sr}Hz")
         except Exception as e:
