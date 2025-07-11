@@ -115,6 +115,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Start actual recording
     function startActualRecording() {
         try {
+            console.log('=== STARTING RECORDING DEBUG ===');
+            
+            // Check what formats are supported
+            console.log('Checking MediaRecorder support:');
+            console.log('audio/wav supported:', MediaRecorder.isTypeSupported('audio/wav'));
+            console.log('audio/webm supported:', MediaRecorder.isTypeSupported('audio/webm'));
+            console.log('audio/webm;codecs=opus supported:', MediaRecorder.isTypeSupported('audio/webm;codecs=opus'));
+            console.log('audio/mp4 supported:', MediaRecorder.isTypeSupported('audio/mp4'));
+            
             // Create media recorder with WAV format instead of WebM
             const options = {
                 mimeType: 'audio/wav'
@@ -126,20 +135,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 options.mimeType = 'audio/webm;codecs=opus';
             }
             
+            console.log('Selected mimeType:', options.mimeType);
+            
             mediaRecorder = new MediaRecorder(stream, options);
+            console.log('MediaRecorder created with mimeType:', mediaRecorder.mimeType);
             recordedChunks = [];
             
             // Set up event handlers
             mediaRecorder.ondataavailable = function(event) {
+                console.log('Data available, size:', event.data.size, 'type:', event.data.type);
                 if (event.data.size > 0) {
                     recordedChunks.push(event.data);
                 }
             };
             
             mediaRecorder.onstop = function() {
+                console.log('Recording stopped. Chunks:', recordedChunks.length);
+                console.log('MediaRecorder final mimeType:', mediaRecorder.mimeType);
+                
                 // Create blob from recorded chunks - use the same type as recording
                 const mimeType = mediaRecorder.mimeType || 'audio/wav';
                 recordedBlob = new Blob(recordedChunks, { type: mimeType });
+                
+                console.log('Created blob - size:', recordedBlob.size, 'type:', recordedBlob.type);
                 
                 // Create audio URL and set to player
                 const audioUrl = URL.createObjectURL(recordedBlob);
@@ -157,10 +175,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Reset buttons
                 recordBtn.disabled = false;
                 stopBtn.disabled = true;
+                
+                console.log('=== RECORDING COMPLETE ===');
             };
             
             // Start recording
             mediaRecorder.start();
+            console.log('MediaRecorder started');
             
             // Show recording status
             recordingStatus.style.display = 'flex';
@@ -198,7 +219,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Use recorded audio
     function useRecording() {
+        console.log('=== USE RECORDING DEBUG ===');
         if (recordedBlob) {
+            console.log('Original blob - size:', recordedBlob.size, 'type:', recordedBlob.type);
+            
             // Determine file extension based on blob type
             const mimeType = recordedBlob.type;
             let extension = '.wav';
@@ -209,13 +233,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 filename = 'recorded-audio.webm';
             }
             
+            console.log('Determined filename:', filename, 'extension:', extension);
+            
             // Create a file from the blob
             const file = new File([recordedBlob], filename, { type: mimeType });
+            console.log('Created file - name:', file.name, 'size:', file.size, 'type:', file.type);
             
             // Create a new FileList-like object
             const dt = new DataTransfer();
             dt.items.add(file);
             fileInput.files = dt.files;
+            
+            console.log('File added to input - files count:', fileInput.files.length);
+            if (fileInput.files.length > 0) {
+                console.log('First file - name:', fileInput.files[0].name, 'size:', fileInput.files[0].size, 'type:', fileInput.files[0].type);
+            }
             
             // Enable submit button
             submitBtn.disabled = false;
@@ -226,6 +258,10 @@ document.addEventListener('DOMContentLoaded', function() {
             // Keep recorded audio section visible but update its appearance
             const recordedActions = document.querySelector('.recorded-actions');
             recordedActions.innerHTML = '<span style="color: #4caf50; font-weight: 600;">✓ Ready to analyze</span>';
+            
+            console.log('=== USE RECORDING COMPLETE ===');
+        } else {
+            console.log('ERROR: No recorded blob available');
         }
     }
 

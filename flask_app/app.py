@@ -166,6 +166,7 @@ def convert_to_wav(input_path):
 def extract_features(filepath):
     """Extract features matching the training format exactly"""
     try:
+        logger.info(f"=== EXTRACT FEATURES DEBUG START ===")
         logger.info(f"Processing file: {filepath}")
         
         # Check if file exists and is readable
@@ -180,29 +181,42 @@ def extract_features(filepath):
             logger.error("File is empty")
             return None
         
+        # Log file extension detection
+        is_wav = filepath.endswith('.wav')
+        logger.info(f"File extension check - is WAV: {is_wav}, filepath ends with: {filepath[-10:]}")
+        
         # Fast path for WAV files - skip all conversion
-        if filepath.endswith('.wav'):
+        if is_wav:
+            logger.info("=== TAKING WAV FAST PATH ===")
             logger.info("WAV file detected - loading directly with librosa")
             try:
+                logger.info("About to call librosa.load() for WAV file")
                 y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
-                logger.info(f"WAV file loaded directly: {len(y)} samples at {sr}Hz")
+                logger.info(f"SUCCESS: WAV file loaded directly: {len(y)} samples at {sr}Hz")
             except Exception as e:
-                logger.error(f"Error loading WAV file with librosa: {e}")
+                logger.error(f"ERROR: Failed to load WAV file with librosa: {e}")
+                logger.error(f"Exception type: {type(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
                 return None
         else:
+            logger.info("=== TAKING NON-WAV PATH ===")
             # For non-WAV files, try loading directly with librosa first
             logger.info(f"Non-WAV file - trying direct librosa loading: {filepath}")
             
             try:
+                logger.info("About to call librosa.load() for non-WAV file")
                 # First attempt: Load directly with librosa (works with most formats)
                 y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
-                logger.info(f"Librosa loaded {len(y)} samples at {sr}Hz directly")
+                logger.info(f"SUCCESS: Librosa loaded {len(y)} samples at {sr}Hz directly")
             except Exception as e:
                 logger.info(f"Direct librosa loading failed: {e}, trying conversion method")
                 
                 # Fallback: Convert to WAV first (only if direct loading fails)
+                logger.info(f"=== STARTING CONVERSION FALLBACK ===")
                 logger.info(f"Converting {filepath} to WAV...")
                 converted_path = convert_to_wav(filepath)
+                logger.info(f"Conversion returned path: {converted_path}")
                 
                 # Check if conversion actually worked
                 if not os.path.exists(converted_path):
@@ -224,8 +238,9 @@ def extract_features(filepath):
                 
                 # Try loading the converted file
                 try:
+                    logger.info("About to call librosa.load() for converted file")
                     y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
-                    logger.info(f"Librosa loaded {len(y)} samples at {sr}Hz after conversion")
+                    logger.info(f"SUCCESS: Librosa loaded {len(y)} samples at {sr}Hz after conversion")
                 except Exception as e2:
                     logger.error(f"Error loading converted audio with librosa: {e2}")
                     # Try alternative loading methods
@@ -245,15 +260,21 @@ def extract_features(filepath):
             logger.error("Audio file is empty or corrupted")
             return None
             
-        logger.info(f"Audio loaded: {len(y)} samples at {sr} Hz")
+        logger.info(f"Audio successfully loaded: {len(y)} samples at {sr} Hz")
         
         # Extract features exactly like training script
         try:
+            logger.info("Starting feature extraction...")
             mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+            logger.info(f"MFCC extracted: shape {mfcc.shape}")
             zcr = librosa.feature.zero_crossing_rate(y)
+            logger.info(f"ZCR extracted: shape {zcr.shape}")
             spec_cent = librosa.feature.spectral_centroid(y=y, sr=sr)
+            logger.info(f"Spectral centroid extracted: shape {spec_cent.shape}")
         except Exception as e:
             logger.error(f"Error extracting audio features: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
 
         # Combine features in same order as training
@@ -266,7 +287,7 @@ def extract_features(filepath):
             np.std(spec_cent)          # spec_cent_std (1 feature)
         ])
         
-        logger.info(f"Extracted features shape: {features.shape} (expected: 30)")
+        logger.info(f"SUCCESS: Extracted features shape: {features.shape} (expected: 30)")
         
         # Clean up converted file if it was created
         if filepath.endswith('_converted.wav'):
@@ -275,9 +296,11 @@ def extract_features(filepath):
                 logger.info(f"Cleaned up converted file: {filepath}")
             except:
                 pass
-            
+        
+        logger.info(f"=== EXTRACT FEATURES DEBUG END - SUCCESS ===")
         return features
     except Exception as e:
+        logger.error(f"=== EXTRACT FEATURES DEBUG END - ERROR ===")
         logger.error(f"Error extracting features from {filepath}: {e}")
         logger.error(f"Exception type: {type(e)}")
         import traceback
@@ -324,6 +347,11 @@ def index():
             filepath = os.path.join(UPLOAD_FOLDER, filename)
             file.save(filepath)
             
+            logger.info(f"=== FILE UPLOAD DEBUG ===")
+            logger.info(f"Original filename: {file.filename}")
+            logger.info(f"File content type: {file.content_type}")
+            logger.info(f"Saved as: {filename}")
+            logger.info(f"Full path: {filepath}")
             logger.info(f"File uploaded: {filename}, size: {os.path.getsize(filepath)} bytes")
             
             # Extract features
@@ -348,6 +376,7 @@ def index():
             result = "Fake" if prediction == 0 else "Real"
             confidence_score = max(confidence) * 100
             
+            logger.info(f"=== PREDICTION SUCCESS ===")
             logger.info(f"Prediction: {result}, Confidence: {confidence_score}%")
             
             # Clean up uploaded file
