@@ -98,26 +98,48 @@ def extract_features(filepath):
             logger.error("File is empty")
             return None
 
-        # SIMPLE SOLUTION: Convert WebM to WAV using pydub first, then use librosa
-        # This handles the WebM codec issue on Heroku
+        # ROBUST SOLUTION: Use FFmpeg directly to convert WebM to WAV
+        # This handles the WebM codec issue on Heroku more reliably
         temp_wav_path = None
         try:
             # Check if file is WebM format
             if filepath.lower().endswith('.webm'):
-                logger.info("WebM file detected, converting to WAV using pydub...")
+                logger.info("WebM file detected, converting to WAV using FFmpeg...")
                 
-                # Use pydub to convert WebM to WAV
-                audio = AudioSegment.from_file(filepath, format="webm")
-                
-                # Create temporary WAV file
+                # Create temporary WAV file path
                 temp_wav_path = filepath.replace('.webm', '_temp.wav')
-                audio.export(temp_wav_path, format="wav")
                 
-                logger.info(f"WebM converted to WAV: {temp_wav_path}")
+                # Use FFmpeg directly to convert WebM to WAV
+                # FFmpeg is more reliable than pydub for WebM conversion on Heroku
+                import subprocess
+                ffmpeg_cmd = [
+                    'ffmpeg', '-i', filepath,
+                    '-acodec', 'pcm_s16le',  # 16-bit PCM
+                    '-ar', '16000',          # 16kHz sample rate
+                    '-ac', '1',              # Mono
+                    '-y',                    # Overwrite output file
+                    temp_wav_path
+                ]
                 
-                # Use the converted WAV file for librosa
-                y, sr = librosa.load(temp_wav_path, sr=16000)
-                logger.info(f"SUCCESS: Audio loaded from converted WAV - {len(y)} samples at {sr}Hz")
+                logger.info(f"Running FFmpeg command: {' '.join(ffmpeg_cmd)}")
+                result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    logger.info(f"FFmpeg conversion successful: {temp_wav_path}")
+                    
+                    # Verify the WAV file was created and has content
+                    if os.path.exists(temp_wav_path) and os.path.getsize(temp_wav_path) > 0:
+                        logger.info(f"WAV file created successfully, size: {os.path.getsize(temp_wav_path)} bytes")
+                        
+                        # Use the converted WAV file for librosa
+                        y, sr = librosa.load(temp_wav_path, sr=16000)
+                        logger.info(f"SUCCESS: Audio loaded from converted WAV - {len(y)} samples at {sr}Hz")
+                    else:
+                        raise Exception("FFmpeg conversion failed - no output file created")
+                else:
+                    logger.error(f"FFmpeg failed with return code {result.returncode}")
+                    logger.error(f"FFmpeg stderr: {result.stderr}")
+                    raise Exception(f"FFmpeg conversion failed: {result.stderr}")
             else:
                 # For non-WebM files, try direct loading with librosa
                 logger.info("Non-WebM file, trying direct librosa loading...")
@@ -128,22 +150,52 @@ def extract_features(filepath):
             logger.error(f"Primary loading method failed: {str(e)}")
             logger.error(f"Exception type: {type(e).__name__}")
             
-            # Fallback: try loading without resampling first
-            try:
-                logger.info("Trying fallback: loading without resampling...")
-                y, sr = librosa.load(filepath, sr=None)
-                logger.info(f"Loaded at original rate: {len(y)} samples at {sr}Hz")
-                
-                # Resample to 16kHz if needed
-                if sr != 16000:
-                    logger.info(f"Resampling from {sr}Hz to 16000Hz")
-                    y = librosa.resample(y, orig_sr=sr, target_sr=16000)
-                    sr = 16000
-                    logger.info(f"Resampled: {len(y)} samples at {sr}Hz")
-            except Exception as e2:
-                logger.error(f"All loading methods failed: {str(e2)}")
-                logger.error(f"Exception type: {type(e2).__name__}")
-                return None
+            # Fallback 1: Try pydub conversion if FFmpeg failed
+            if filepath.lower().endswith('.webm') and temp_wav_path:
+                try:
+                    logger.info("FFmpeg failed, trying pydub as fallback...")
+                    audio = AudioSegment.from_file(filepath, format="webm")
+                    audio.export(temp_wav_path, format="wav")
+                    logger.info(f"Pydub conversion successful: {temp_wav_path}")
+                    
+                    y, sr = librosa.load(temp_wav_path, sr=16000)
+                    logger.info(f"SUCCESS: Audio loaded from pydub-converted WAV - {len(y)} samples at {sr}Hz")
+                except Exception as e_pydub:
+                    logger.error(f"Pydub fallback also failed: {str(e_pydub)}")
+                    
+                    # Fallback 2: Try direct librosa loading without resampling
+                    try:
+                        logger.info("Trying final fallback: direct librosa loading without resampling...")
+                        y, sr = librosa.load(filepath, sr=None)
+                        logger.info(f"Loaded at original rate: {len(y)} samples at {sr}Hz")
+                        
+                        # Resample to 16kHz if needed
+                        if sr != 16000:
+                            logger.info(f"Resampling from {sr}Hz to 16000Hz")
+                            y = librosa.resample(y, orig_sr=sr, target_sr=16000)
+                            sr = 16000
+                            logger.info(f"Resampled: {len(y)} samples at {sr}Hz")
+                    except Exception as e2:
+                        logger.error(f"All loading methods failed: {str(e2)}")
+                        logger.error(f"Exception type: {type(e2).__name__}")
+                        return None
+            else:
+                # For non-WebM files, try loading without resampling
+                try:
+                    logger.info("Trying fallback: loading without resampling...")
+                    y, sr = librosa.load(filepath, sr=None)
+                    logger.info(f"Loaded at original rate: {len(y)} samples at {sr}Hz")
+                    
+                    # Resample to 16kHz if needed
+                    if sr != 16000:
+                        logger.info(f"Resampling from {sr}Hz to 16000Hz")
+                        y = librosa.resample(y, orig_sr=sr, target_sr=16000)
+                        sr = 16000
+                        logger.info(f"Resampled: {len(y)} samples at {sr}Hz")
+                except Exception as e2:
+                    logger.error(f"All loading methods failed: {str(e2)}")
+                    logger.error(f"Exception type: {type(e2).__name__}")
+                    return None
         finally:
             # Clean up temporary WAV file if created
             if temp_wav_path and os.path.exists(temp_wav_path):
