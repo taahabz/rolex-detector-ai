@@ -11,3 +11,4 @@ libpulse-dev
 libopus-dev
 libvorbis-dev
 libflac-dev
+libpulse0
