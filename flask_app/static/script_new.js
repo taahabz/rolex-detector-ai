@@ -65,6 +65,10 @@ document.addEventListener('DOMContentLoaded', function() {
         recordedBlob = null;
         recordedChunks = [];
         
+        // Clear stored blob
+        window.recordedAudioBlob = null;
+        window.recordedAudioFilename = null;
+        
         // Reset recorded actions to original state
         const recordedActions = document.querySelector('.recorded-actions');
         recordedActions.innerHTML = `
@@ -223,6 +227,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (recordedBlob) {
             console.log('Original blob - size:', recordedBlob.size, 'type:', recordedBlob.type);
             
+            // Store the blob globally for form submission
+            window.recordedAudioBlob = recordedBlob;
+            
             // Determine file extension based on blob type
             const mimeType = recordedBlob.type;
             let extension = '.wav';
@@ -235,19 +242,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('Determined filename:', filename, 'extension:', extension);
             
-            // Create a file from the blob
-            const file = new File([recordedBlob], filename, { type: mimeType });
-            console.log('Created file - name:', file.name, 'size:', file.size, 'type:', file.type);
+            // Store filename for form submission
+            window.recordedAudioFilename = filename;
             
-            // Create a new FileList-like object
-            const dt = new DataTransfer();
-            dt.items.add(file);
-            fileInput.files = dt.files;
-            
-            console.log('File added to input - files count:', fileInput.files.length);
-            if (fileInput.files.length > 0) {
-                console.log('First file - name:', fileInput.files[0].name, 'size:', fileInput.files[0].size, 'type:', fileInput.files[0].type);
-            }
+            // Clear any existing file selection
+            fileInput.value = '';
             
             // Enable submit button
             submitBtn.disabled = false;
@@ -260,6 +259,8 @@ document.addEventListener('DOMContentLoaded', function() {
             recordedActions.innerHTML = '<span style="color: #4caf50; font-weight: 600;">✓ Ready to analyze</span>';
             
             console.log('=== USE RECORDING COMPLETE ===');
+            console.log('Stored blob size:', window.recordedAudioBlob.size);
+            console.log('Stored filename:', window.recordedAudioFilename);
         } else {
             console.log('ERROR: No recorded blob available');
         }
@@ -360,8 +361,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Form submission
     uploadForm.addEventListener('submit', function(e) {
-        if (fileInput.files.length === 0) {
-            e.preventDefault();
+        e.preventDefault(); // Always prevent default, we'll handle submission manually
+        
+        console.log('=== FORM SUBMISSION DEBUG ===');
+        console.log('File input files:', fileInput.files.length);
+        console.log('Recorded blob available:', !!window.recordedAudioBlob);
+        
+        // Check if we have either a file or recorded audio
+        if (fileInput.files.length === 0 && !window.recordedAudioBlob) {
             showError('Please record audio or select a file first!');
             return;
         }
@@ -370,5 +377,46 @@ document.addEventListener('DOMContentLoaded', function() {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="btn-icon">🔄</span><span class="btn-text">Analyzing...</span>';
         loading.style.display = 'block';
+        
+        // Create FormData
+        const formData = new FormData();
+        
+        if (window.recordedAudioBlob) {
+            // Use recorded audio
+            console.log('Using recorded audio blob - size:', window.recordedAudioBlob.size);
+            const file = new File([window.recordedAudioBlob], window.recordedAudioFilename, { 
+                type: window.recordedAudioBlob.type 
+            });
+            formData.append('file', file);
+            console.log('Created file for upload - name:', file.name, 'size:', file.size, 'type:', file.type);
+        } else {
+            // Use uploaded file
+            console.log('Using uploaded file - name:', fileInput.files[0].name, 'size:', fileInput.files[0].size);
+            formData.append('file', fileInput.files[0]);
+        }
+        
+        console.log('=== SENDING REQUEST ===');
+        
+        // Send the form data
+        fetch('/', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.text())
+        .then(html => {
+            // Replace the page content with the response
+            document.open();
+            document.write(html);
+            document.close();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showError('An error occurred while analyzing the audio. Please try again.');
+            
+            // Reset loading state
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<span class="btn-icon">🔍</span><span class="btn-text">Analyze</span>';
+            loading.style.display = 'none';
+        });
     });
 });
