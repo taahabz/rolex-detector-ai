@@ -105,7 +105,10 @@ def extract_features(filepath):
             y, sr = librosa.load(filepath, sr=16000)
             logger.info(f"SUCCESS: Audio loaded directly - {len(y)} samples at {sr}Hz")
         except Exception as e:
-            logger.error(f"Direct loading failed: {e}")
+            logger.error(f"Direct loading failed: {str(e)}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             
             # Simple fallback: try loading without resampling first
             try:
@@ -120,7 +123,9 @@ def extract_features(filepath):
                     sr = 16000
                     logger.info(f"Resampled: {len(y)} samples at {sr}Hz")
             except Exception as e2:
-                logger.error(f"All loading methods failed: {e2}")
+                logger.error(f"All loading methods failed: {str(e2)}")
+                logger.error(f"Exception type: {type(e2).__name__}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
                 return None
         
         if len(y) == 0:
