@@ -14,6 +14,18 @@ import sys
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Configure environment for PulseAudio libraries (Heroku fix)
+if 'LD_LIBRARY_PATH' in os.environ:
+    os.environ['LD_LIBRARY_PATH'] += ':/usr/lib/x86_64-linux-gnu/pulseaudio'
+else:
+    os.environ['LD_LIBRARY_PATH'] = '/usr/lib/x86_64-linux-gnu/pulseaudio'
+
+# Also set PULSE_RUNTIME_PATH to avoid PulseAudio runtime issues
+os.environ['PULSE_RUNTIME_PATH'] = '/tmp/pulse'
+
+logger.info(f"LD_LIBRARY_PATH set to: {os.environ.get('LD_LIBRARY_PATH')}")
+logger.info(f"PULSE_RUNTIME_PATH set to: {os.environ.get('PULSE_RUNTIME_PATH')}")
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-this')
 
