@@ -77,7 +77,7 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def convert_to_wav(input_path):
-    """Convert audio file to WAV format if needed"""
+    """Convert audio file to WAV format if needed - simplified version without ffmpeg dependencies"""
     try:
         logger.info(f"Converting audio file: {input_path}")
         
@@ -94,45 +94,17 @@ def convert_to_wav(input_path):
             logger.error("Input file is empty")
             return input_path
         
-        # Test if ffmpeg is available
-        ffmpeg_test = os.system("which ffmpeg > /dev/null 2>&1")
-        if ffmpeg_test != 0:
-            logger.error("ffmpeg is not available - this is required for audio conversion")
+        # For WebM files, we'll skip pydub conversion and return the original path
+        # This will force the system to try direct librosa loading
+        if input_path.endswith('.webm'):
+            logger.info("WebM file detected - skipping pydub conversion due to ffmpeg dependency issues")
+            logger.info("Will attempt direct librosa loading instead")
             return input_path
         
-        # Load audio file with pydub - enhanced WebM handling
+        # Only try pydub conversion for non-WebM files
         try:
-            if input_path.endswith('.webm'):
-                # For WebM files from browser MediaRecorder, try multiple approaches
-                logger.info("Loading WebM file with pydub")
-                try:
-                    # First try: Standard WebM
-                    audio = AudioSegment.from_file(input_path, format="webm")
-                    logger.info("Successfully loaded WebM with standard method")
-                except Exception as e1:
-                    logger.info(f"Standard WebM failed: {e1}, trying alternative methods")
-                    try:
-                        # Second try: WebM with opus codec
-                        audio = AudioSegment.from_file(input_path, format="webm", codec="opus")
-                        logger.info("Successfully loaded WebM with opus codec")
-                    except Exception as e2:
-                        logger.info(f"WebM with opus failed: {e2}, trying auto-detect")
-                        try:
-                            # Third try: Let pydub auto-detect format
-                            audio = AudioSegment.from_file(input_path)
-                            logger.info("Successfully loaded WebM with auto-detection")
-                        except Exception as e3:
-                            logger.error(f"All WebM methods failed: {e3}")
-                            # Last resort: try with different parameters
-                            try:
-                                audio = AudioSegment.from_file(input_path, format="webm", parameters=["-acodec", "libopus"])
-                                logger.info("Successfully loaded WebM with libopus parameters")
-                            except Exception as e4:
-                                logger.error(f"Final WebM attempt failed: {e4}")
-                                return input_path
-            else:
-                logger.info(f"Loading {input_path} with pydub")
-                audio = AudioSegment.from_file(input_path)
+            logger.info(f"Loading {input_path} with pydub")
+            audio = AudioSegment.from_file(input_path)
         except Exception as e:
             logger.error(f"pydub failed to load audio file: {e}")
             return input_path
@@ -213,60 +185,116 @@ def extract_features(filepath):
                 return None
         else:
             logger.info("=== TAKING NON-WAV PATH ===")
-            # For non-WAV files, try loading directly with librosa first
-            logger.info(f"Non-WAV file - trying direct librosa loading: {filepath}")
             
-            try:
-                logger.info("About to call librosa.load() for non-WAV file")
-                # First attempt: Load directly with librosa (works with most formats)
-                y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
-                logger.info(f"SUCCESS: Librosa loaded {len(y)} samples at {sr}Hz directly")
-            except Exception as e:
-                logger.info(f"Direct librosa loading failed: {e}, trying conversion method")
+            # Special handling for WebM files
+            if filepath.endswith('.webm'):
+                logger.info("WebM file detected - trying specialized loading methods")
                 
-                # Fallback: Convert to WAV first (only if direct loading fails)
-                logger.info(f"=== STARTING CONVERSION FALLBACK ===")
-                logger.info(f"Converting {filepath} to WAV...")
-                converted_path = convert_to_wav(filepath)
-                logger.info(f"Conversion returned path: {converted_path}")
-                
-                # Check if conversion actually worked
-                if not os.path.exists(converted_path):
-                    logger.error(f"Conversion failed - file does not exist: {converted_path}")
-                    return None
-                
-                # Check if conversion returned the original path (indicating failure)
-                if converted_path == filepath:
-                    logger.error("Conversion returned original path - conversion likely failed")
-                    return None
-                    
-                # Verify the converted file is actually a WAV file
-                if not converted_path.endswith('.wav'):
-                    logger.error(f"Conversion did not produce a WAV file: {converted_path}")
-                    return None
-                    
-                filepath = converted_path
-                logger.info(f"Successfully converted to WAV: {filepath}")
-                
-                # Try loading the converted file
+                # Try method 1: audioread directly
                 try:
-                    logger.info("About to call librosa.load() for converted file")
-                    y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
-                    logger.info(f"SUCCESS: Librosa loaded {len(y)} samples at {sr}Hz after conversion")
-                except Exception as e2:
-                    logger.error(f"Error loading converted audio with librosa: {e2}")
-                    # Try alternative loading methods
-                    try:
-                        logger.info("Trying alternative loading method...")
-                        y, sr = librosa.load(filepath, sr=None)  # Load with original sample rate first
-                        if sr != 16000:
-                            logger.info(f"Resampling from {sr}Hz to 16000Hz")
-                            y = librosa.resample(y, orig_sr=sr, target_sr=16000)
+                    logger.info("Trying audioread for WebM file")
+                    import audioread
+                    
+                    with audioread.audio_open(filepath) as f:
+                        logger.info(f"audioread opened WebM: {f.channels} channels, {f.samplerate}Hz, {f.duration}s")
+                        
+                        # Read all audio data
+                        data = []
+                        for buf in f:
+                            data.append(buf)
+                        
+                        if data:
+                            import numpy as np
+                            # Convert bytes to numpy array
+                            audio_data = b''.join(data)
+                            
+                            # Determine sample format and convert
+                            if f.channels == 1:
+                                # Mono audio - assume 16-bit
+                                y = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+                            else:
+                                # Stereo audio - convert to mono
+                                stereo_data = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+                                y = stereo_data.reshape(-1, f.channels).mean(axis=1)
+                            
+                            # Resample if needed
+                            if f.samplerate != 16000:
+                                logger.info(f"Resampling WebM from {f.samplerate}Hz to 16000Hz")
+                                y = librosa.resample(y, orig_sr=f.samplerate, target_sr=16000)
+                            
                             sr = 16000
-                        logger.info(f"Alternative method loaded {len(y)} samples at {sr}Hz")
-                    except Exception as e3:
-                        logger.error(f"Alternative loading method also failed: {e3}")
+                            logger.info(f"SUCCESS: WebM loaded with audioread: {len(y)} samples at {sr}Hz")
+                        else:
+                            raise Exception("No audio data found in WebM file")
+                            
+                except Exception as e:
+                    logger.error(f"audioread failed for WebM: {e}")
+                    logger.info("Trying librosa for WebM as fallback")
+                    
+                    # Try method 2: librosa with specific parameters
+                    try:
+                        logger.info("About to call librosa.load() for WebM file")
+                        y, sr = librosa.load(filepath, sr=16000)
+                        logger.info(f"SUCCESS: WebM loaded with librosa: {len(y)} samples at {sr}Hz")
+                    except Exception as e2:
+                        logger.error(f"All WebM loading methods failed: {e2}")
+                        logger.info("WebM file cannot be processed - skipping conversion fallback")
                         return None
+            else:
+                # For non-WebM files, try loading directly with librosa first
+                logger.info(f"Non-WebM file - trying direct librosa loading: {filepath}")
+                
+                try:
+                    logger.info("About to call librosa.load() for non-WAV file")
+                    # First attempt: Load directly with librosa (works with most formats)
+                    y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
+                    logger.info(f"SUCCESS: Librosa loaded {len(y)} samples at {sr}Hz directly")
+                except Exception as e:
+                    logger.info(f"Direct librosa loading failed: {e}, trying conversion method")
+                    
+                    # Fallback: Convert to WAV first (only if direct loading fails)
+                    logger.info(f"=== STARTING CONVERSION FALLBACK ===")
+                    logger.info(f"Converting {filepath} to WAV...")
+                    converted_path = convert_to_wav(filepath)
+                    logger.info(f"Conversion returned path: {converted_path}")
+                    
+                    # Check if conversion actually worked
+                    if not os.path.exists(converted_path):
+                        logger.error(f"Conversion failed - file does not exist: {converted_path}")
+                        return None
+                    
+                    # Check if conversion returned the original path (indicating failure)
+                    if converted_path == filepath:
+                        logger.error("Conversion returned original path - conversion likely failed")
+                        return None
+                        
+                    # Verify the converted file is actually a WAV file
+                    if not converted_path.endswith('.wav'):
+                        logger.error(f"Conversion did not produce a WAV file: {converted_path}")
+                        return None
+                        
+                    filepath = converted_path
+                    logger.info(f"Successfully converted to WAV: {filepath}")
+                    
+                    # Try loading the converted file
+                    try:
+                        logger.info("About to call librosa.load() for converted file")
+                        y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
+                        logger.info(f"SUCCESS: Librosa loaded {len(y)} samples at {sr}Hz after conversion")
+                    except Exception as e2:
+                        logger.error(f"Error loading converted audio with librosa: {e2}")
+                        # Try alternative loading methods
+                        try:
+                            logger.info("Trying alternative loading method...")
+                            y, sr = librosa.load(filepath, sr=None)  # Load with original sample rate first
+                            if sr != 16000:
+                                logger.info(f"Resampling from {sr}Hz to 16000Hz")
+                                y = librosa.resample(y, orig_sr=sr, target_sr=16000)
+                                sr = 16000
+                            logger.info(f"Alternative method loaded {len(y)} samples at {sr}Hz")
+                        except Exception as e3:
+                            logger.error(f"Alternative loading method also failed: {e3}")
+                            return None
         
         if len(y) == 0:
             logger.error("Audio file is empty or corrupted")
