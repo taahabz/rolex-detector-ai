@@ -60,6 +60,8 @@ def test_system_dependencies():
     ffmpeg_check = os.system("which ffmpeg > /dev/null 2>&1")
     if ffmpeg_check == 0:
         print("✓ ffmpeg is available")
+        # Test ffmpeg version
+        os.system("ffmpeg -version | head -1")
     else:
         print("✗ ffmpeg is not available")
     
@@ -70,6 +72,22 @@ def test_system_dependencies():
         print("✓ soundfile backend is working")
     except Exception as e:
         print(f"✗ soundfile backend issue: {e}")
+    
+    # Test WebM processing specifically
+    try:
+        from pydub import AudioSegment
+        # Create a test audio file
+        test_audio = AudioSegment.silent(duration=1000)  # 1 second of silence
+        print("✓ pydub can create audio")
+        
+        # Test export functionality
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            test_audio.export(tmp.name, format="wav")
+            print("✓ pydub can export WAV files")
+            os.unlink(tmp.name)
+    except Exception as e:
+        print(f"✗ pydub audio processing failed: {e}")
 
 def main():
     print("Testing audio processing setup on Heroku...")

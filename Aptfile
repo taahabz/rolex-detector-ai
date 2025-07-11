@@ -1,3 +1,13 @@
 ffmpeg
 libsndfile1
 libsndfile1-dev
+libavcodec-extra
+libavformat-dev
+libavutil-dev
+libswscale-dev
+libswresample-dev
+libasound2-dev
+libpulse-dev
+libopus-dev
+libvorbis-dev
+libflac-dev

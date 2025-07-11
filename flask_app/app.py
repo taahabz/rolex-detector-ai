@@ -78,27 +78,69 @@ def convert_to_wav(input_path):
         file_size = os.path.getsize(input_path)
         logger.info(f"File size: {file_size} bytes")
         
+        if file_size == 0:
+            logger.error("Input file is empty")
+            return input_path
+        
+        # Test if ffmpeg is available
+        ffmpeg_test = os.system("which ffmpeg > /dev/null 2>&1")
+        if ffmpeg_test != 0:
+            logger.error("ffmpeg is not available - this is required for audio conversion")
+            return input_path
+        
         # Load audio file with pydub
-        if input_path.endswith('.webm'):
-            # For WebM files, we need to be more explicit
-            audio = AudioSegment.from_file(input_path, format="webm")
-        else:
-            audio = AudioSegment.from_file(input_path)
+        try:
+            if input_path.endswith('.webm'):
+                # For WebM files, we need to be more explicit
+                logger.info("Loading WebM file with pydub")
+                audio = AudioSegment.from_file(input_path, format="webm")
+            else:
+                logger.info(f"Loading {input_path} with pydub")
+                audio = AudioSegment.from_file(input_path)
+        except Exception as e:
+            logger.error(f"pydub failed to load audio file: {e}")
+            # Try with explicit codec for WebM
+            if input_path.endswith('.webm'):
+                try:
+                    logger.info("Trying WebM with explicit codec")
+                    audio = AudioSegment.from_file(input_path, format="webm", codec="libvpx")
+                except Exception as e2:
+                    logger.error(f"WebM with explicit codec also failed: {e2}")
+                    return input_path
+            else:
+                return input_path
+        
+        # Check if audio was loaded successfully
+        if len(audio) == 0:
+            logger.error("Loaded audio is empty")
+            return input_path
+        
+        logger.info(f"Audio loaded successfully: {len(audio)}ms duration, {audio.channels} channels, {audio.frame_rate}Hz")
         
         # Create output path
         output_path = input_path.rsplit('.', 1)[0] + '_converted.wav'
         
         # Export as WAV with specific parameters for consistency
-        audio.export(output_path, format="wav", parameters=["-ar", "44100", "-ac", "1"])
+        try:
+            audio.export(output_path, format="wav", parameters=["-ar", "44100", "-ac", "1"])
+            logger.info(f"Successfully exported to: {output_path}")
+        except Exception as e:
+            logger.error(f"Failed to export audio: {e}")
+            return input_path
         
-        logger.info(f"Successfully converted to: {output_path}")
-        
-        # Verify the output file was created
+        # Verify the output file was created and has content
         if not os.path.exists(output_path):
             logger.error(f"Conversion failed - output file not created: {output_path}")
             return input_path
+        
+        output_size = os.path.getsize(output_path)
+        if output_size == 0:
+            logger.error(f"Conversion failed - output file is empty: {output_path}")
+            return input_path
             
+        logger.info(f"Conversion successful - output file size: {output_size} bytes")
         return output_path
+        
     except Exception as e:
         logger.error(f"Error converting audio from {input_path}: {e}")
         logger.error(f"Exception type: {type(e)}")
@@ -136,11 +178,33 @@ def extract_features(filepath):
         logger.info(f"Loading audio with librosa: {filepath}")
         
         try:
+            # Test if librosa can access the file
+            import soundfile as sf
+            try:
+                # Try to read file info first
+                info = sf.info(filepath)
+                logger.info(f"Audio file info: {info.frames} frames, {info.samplerate}Hz, {info.channels} channels")
+            except Exception as e:
+                logger.error(f"soundfile cannot read file info: {e}")
+                return None
+            
             y, sr = librosa.load(filepath, sr=16000)  # Match training sr=16000
+            logger.info(f"Librosa loaded {len(y)} samples at {sr}Hz")
         except Exception as e:
             logger.error(f"Error loading audio with librosa: {e}")
             logger.error(f"Librosa version: {librosa.__version__}")
-            return None
+            # Try alternative loading methods
+            try:
+                logger.info("Trying alternative loading method...")
+                y, sr = librosa.load(filepath, sr=None)  # Load with original sample rate first
+                if sr != 16000:
+                    logger.info(f"Resampling from {sr}Hz to 16000Hz")
+                    y = librosa.resample(y, orig_sr=sr, target_sr=16000)
+                    sr = 16000
+                logger.info(f"Alternative method loaded {len(y)} samples at {sr}Hz")
+            except Exception as e2:
+                logger.error(f"Alternative loading method also failed: {e2}")
+                return None
         
         if len(y) == 0:
             logger.error("Audio file is empty or corrupted")
@@ -276,11 +340,60 @@ def index():
 # Health check endpoint for Heroku
 @app.route("/health")
 def health_check():
+    """Comprehensive health check endpoint for Heroku"""
+    import sys
+    
+    # Test system dependencies
+    ffmpeg_available = os.system("which ffmpeg > /dev/null 2>&1") == 0
+    
+    # Test audio libraries
+    librosa_test = False
+    soundfile_test = False
+    pydub_test = False
+    
+    try:
+        import librosa
+        # Test basic librosa functionality
+        test_audio = librosa.tone(440, sr=16000, duration=0.1)
+        mfcc_test = librosa.feature.mfcc(y=test_audio, sr=16000, n_mfcc=13)
+        librosa_test = True
+    except Exception as e:
+        logger.error(f"Librosa test failed: {e}")
+    
+    try:
+        import soundfile as sf
+        # Test if soundfile can work
+        soundfile_test = True
+    except Exception as e:
+        logger.error(f"Soundfile test failed: {e}")
+    
+    try:
+        from pydub import AudioSegment
+        # Test basic pydub functionality
+        test_audio = AudioSegment.silent(duration=100)  # 100ms of silence
+        pydub_test = True
+    except Exception as e:
+        logger.error(f"Pydub test failed: {e}")
+    
+    overall_status = "healthy" if all([model is not None, ffmpeg_available, librosa_test, soundfile_test, pydub_test]) else "degraded"
+    
     return jsonify({
-        "status": "healthy", 
+        "status": overall_status,
         "model_loaded": model is not None,
-        "python_version": sys.version,
-        "librosa_version": librosa.__version__
+        "upload_folder": os.path.exists(UPLOAD_FOLDER),
+        "system_dependencies": {
+            "ffmpeg": ffmpeg_available,
+            "python_version": sys.version
+        },
+        "audio_libraries": {
+            "librosa": librosa_test,
+            "soundfile": soundfile_test,
+            "pydub": pydub_test
+        },
+        "environment": {
+            "platform": sys.platform,
+            "working_directory": os.getcwd()
+        }
     })
 
 if __name__ == "__main__":
