@@ -88,27 +88,42 @@ def convert_to_wav(input_path):
             logger.error("ffmpeg is not available - this is required for audio conversion")
             return input_path
         
-        # Load audio file with pydub
+        # Load audio file with pydub - enhanced WebM handling
         try:
             if input_path.endswith('.webm'):
-                # For WebM files, we need to be more explicit
+                # For WebM files from browser MediaRecorder, try multiple approaches
                 logger.info("Loading WebM file with pydub")
-                audio = AudioSegment.from_file(input_path, format="webm")
+                try:
+                    # First try: Standard WebM
+                    audio = AudioSegment.from_file(input_path, format="webm")
+                    logger.info("Successfully loaded WebM with standard method")
+                except Exception as e1:
+                    logger.info(f"Standard WebM failed: {e1}, trying alternative methods")
+                    try:
+                        # Second try: WebM with opus codec
+                        audio = AudioSegment.from_file(input_path, format="webm", codec="opus")
+                        logger.info("Successfully loaded WebM with opus codec")
+                    except Exception as e2:
+                        logger.info(f"WebM with opus failed: {e2}, trying auto-detect")
+                        try:
+                            # Third try: Let pydub auto-detect format
+                            audio = AudioSegment.from_file(input_path)
+                            logger.info("Successfully loaded WebM with auto-detection")
+                        except Exception as e3:
+                            logger.error(f"All WebM methods failed: {e3}")
+                            # Last resort: try with different parameters
+                            try:
+                                audio = AudioSegment.from_file(input_path, format="webm", parameters=["-acodec", "libopus"])
+                                logger.info("Successfully loaded WebM with libopus parameters")
+                            except Exception as e4:
+                                logger.error(f"Final WebM attempt failed: {e4}")
+                                return input_path
             else:
                 logger.info(f"Loading {input_path} with pydub")
                 audio = AudioSegment.from_file(input_path)
         except Exception as e:
             logger.error(f"pydub failed to load audio file: {e}")
-            # Try with explicit codec for WebM
-            if input_path.endswith('.webm'):
-                try:
-                    logger.info("Trying WebM with explicit codec")
-                    audio = AudioSegment.from_file(input_path, format="webm", codec="libvpx")
-                except Exception as e2:
-                    logger.error(f"WebM with explicit codec also failed: {e2}")
-                    return input_path
-            else:
-                return input_path
+            return input_path
         
         # Check if audio was loaded successfully
         if len(audio) == 0:
@@ -400,6 +415,60 @@ def health_check():
             "working_directory": os.getcwd()
         }
     })
+
+@app.route("/test-webm")
+def test_webm():
+    """Test endpoint to verify WebM processing capabilities"""
+    try:
+        from pydub import AudioSegment
+        import tempfile
+        
+        # Create a test audio file
+        test_audio = AudioSegment.silent(duration=1000)  # 1 second of silence
+        
+        # Test WebM creation and conversion
+        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp_webm:
+            try:
+                # Try to export as WebM
+                test_audio.export(tmp_webm.name, format="webm")
+                webm_created = os.path.exists(tmp_webm.name) and os.path.getsize(tmp_webm.name) > 0
+                
+                if webm_created:
+                    # Test conversion back to WAV
+                    converted_path = convert_to_wav(tmp_webm.name)
+                    conversion_success = converted_path != tmp_webm.name and os.path.exists(converted_path)
+                    
+                    # Clean up
+                    if os.path.exists(tmp_webm.name):
+                        os.unlink(tmp_webm.name)
+                    if os.path.exists(converted_path):
+                        os.unlink(converted_path)
+                    
+                    return jsonify({
+                        "webm_creation": webm_created,
+                        "webm_conversion": conversion_success,
+                        "status": "success" if conversion_success else "conversion_failed"
+                    })
+                else:
+                    return jsonify({
+                        "webm_creation": False,
+                        "webm_conversion": False,
+                        "status": "webm_creation_failed"
+                    })
+                    
+            except Exception as e:
+                return jsonify({
+                    "webm_creation": False,
+                    "webm_conversion": False,
+                    "status": "error",
+                    "error": str(e)
+                })
+                
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        })
 
 if __name__ == "__main__":
     # For local development
