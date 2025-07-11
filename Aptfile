@@ -12,3 +12,4 @@ libopus-dev
 libvorbis-dev
 libflac-dev
 libpulse0
+pulseaudio-utils

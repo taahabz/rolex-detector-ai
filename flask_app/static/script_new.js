@@ -115,8 +115,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Start actual recording
     function startActualRecording() {
         try {
-            // Create media recorder
-            mediaRecorder = new MediaRecorder(stream);
+            // Create media recorder with WAV format instead of WebM
+            const options = {
+                mimeType: 'audio/wav'
+            };
+            
+            // Fallback to WebM if WAV is not supported
+            if (!MediaRecorder.isTypeSupported('audio/wav')) {
+                console.log('WAV not supported, trying audio/webm');
+                options.mimeType = 'audio/webm;codecs=opus';
+            }
+            
+            mediaRecorder = new MediaRecorder(stream, options);
             recordedChunks = [];
             
             // Set up event handlers
@@ -127,8 +137,9 @@ document.addEventListener('DOMContentLoaded', function() {
             };
             
             mediaRecorder.onstop = function() {
-                // Create blob from recorded chunks
-                recordedBlob = new Blob(recordedChunks, { type: 'audio/webm' });
+                // Create blob from recorded chunks - use the same type as recording
+                const mimeType = mediaRecorder.mimeType || 'audio/wav';
+                recordedBlob = new Blob(recordedChunks, { type: mimeType });
                 
                 // Create audio URL and set to player
                 const audioUrl = URL.createObjectURL(recordedBlob);
@@ -188,8 +199,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Use recorded audio
     function useRecording() {
         if (recordedBlob) {
+            // Determine file extension based on blob type
+            const mimeType = recordedBlob.type;
+            let extension = '.wav';
+            let filename = 'recorded-audio.wav';
+            
+            if (mimeType.includes('webm')) {
+                extension = '.webm';
+                filename = 'recorded-audio.webm';
+            }
+            
             // Create a file from the blob
-            const file = new File([recordedBlob], 'recorded-audio.webm', { type: 'audio/webm' });
+            const file = new File([recordedBlob], filename, { type: mimeType });
             
             // Create a new FileList-like object
             const dt = new DataTransfer();
